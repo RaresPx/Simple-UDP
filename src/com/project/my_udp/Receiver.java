@@ -1,22 +1,22 @@
 package com.project.my_udp;
 
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.util.HashSet;
-import java.util.Set;
-
 import java.net.*;
 import java.util.*;
+
 /*
-Simple receiver, handles all sender test cases and outputs a final message when the message constructed
-from the payloads contains and [END_OF_MESSAGE] block,
-Has block buffer so it could handle sliding window sender
-It can continue indefinitely, resets the seq after the message has been delivered(enf of message detected)
-Can implement user custom logic in the delivered method and the final while block
- */
+Simple receiver, handles all sender test cases
+Has block buffer so it can handle sliding window sender
+
+Now:
+- works on raw bytes (no String corruption)
+- forwards data directly to UART
+- no END_OF_MESSAGE needed
+
+Can implement user custom logic in deliver() (e.g. UART, file, etc.)
+*/
 public class Receiver {
 
-    static final int PORT = 5000;
+    static final int PORT = Config.PORT;
 
     public static void main(String[] args) throws Exception {
 
@@ -24,15 +24,15 @@ public class Receiver {
 
         int expectedSeq = 0;
         Set<Integer> received = new HashSet<>();
-        Map<Integer, String> buffer = new HashMap<>();
+        Map<Integer, byte[]> buffer = new HashMap<>();
 
-        StringBuilder message = new StringBuilder();
+        FakeUartSink uart = new FakeUartSink();
 
         System.out.println("Receiver started...\n");
 
         while (true) {
 
-            byte[] buf = new byte[1024];
+            byte[] buf = new byte[Config.MAX_PACKET_SIZE];
             DatagramPacket dp = new DatagramPacket(buf, buf.length);
             socket.receive(dp);
 
@@ -46,73 +46,55 @@ public class Receiver {
             }
 
             int seq = p.seq;
-            String text = fromFixed16(p.payload);
 
-            log("Received seq=" + seq + " [" + text + "]");
+            log("Received seq=" + seq + " len=" + p.length);
 
             if (received.contains(seq)) {
                 log("DUPLICATE seq=" + seq);
             } else {
                 received.add(seq);
 
+                byte[] validData = Arrays.copyOf(p.payload, p.length);
+
                 if (seq == expectedSeq) {
-                    deliver(seq, text, message);
+                    deliver(seq, validData, uart);
                     expectedSeq++;
 
                     // release buffered
                     while (buffer.containsKey(expectedSeq)) {
-                        String bufferedText = buffer.remove(expectedSeq);
-                        deliver(expectedSeq, bufferedText, message);
+                        byte[] bufferedData = buffer.remove(expectedSeq);
+                        deliver(expectedSeq, bufferedData, uart);
                         expectedSeq++;
                     }
 
                 } else {
                     log("OUT OF ORDER seq=" + seq + " (expected " + expectedSeq + ")");
-                    buffer.put(seq, text);
+                    buffer.put(seq, validData);
                 }
             }
 
             sendAck(socket, dp.getAddress(), dp.getPort(), seq);
-
-            if (message.toString().contains("[END_OF_MESSAGE]")) {
-                System.out.println("\n===== FINAL MESSAGE =====");
-                System.out.println(message.toString());
-                System.out.println("=========================\n");
-                message.setLength(0);
-                expectedSeq = 0;
-                received.clear();
-                buffer.clear();
-                //break;
-            }
         }
     }
 
-    static void deliver(int seq, String text, StringBuilder message) {
-        log("DELIVER seq=" + seq + " [" + text + "]");
-        message.append(text);
+    static void deliver(int seq, byte[] data, FakeUartSink uart) {
+        log("DELIVER seq=" + seq + " bytes=" + data.length);
+
+        // 🔌 forward to UART (16-bit chunk simulation inside)
+        uart.write(data, data.length);
     }
 
     static void sendAck(DatagramSocket socket, InetAddress addr, int port, int seq) throws Exception {
         Packet ack = new Packet();
         ack.seq = (short) seq;
         ack.flags = 1;
+        ack.length = 0; // no payload
 
         byte[] bytes = ack.toBytes();
         DatagramPacket dp = new DatagramPacket(bytes, bytes.length, addr, port);
         socket.send(dp);
 
         log("ACK SENT seq=" + seq);
-    }
-
-    static String fromFixed16(byte[] data) {
-        int len = data.length;
-
-        // find first zero byte (padding) at the end
-        while (len > 0 && data[len - 1] == 0) {
-            len--;
-        }
-
-        return new String(data, 0, len);
     }
 
     static void log(String s) {
