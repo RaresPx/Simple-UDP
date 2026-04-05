@@ -48,6 +48,8 @@ public class Config {
     public static final String INET_ADDR = "127.0.0.1";
     public static final int PORT = 5000;
 
+    public static final int BUFFER_SIZE = 16384; //16kB
+
     public static final int PAYLOAD_SIZE = 512;
     public static final int WINDOW_SIZE = 5;
 

@@ -1,31 +1,35 @@
 package com.project.my_udp;
 
-import java.io.*;
+import java.io.RandomAccessFile;
 
 class FakeUartSource {
 
     private final RandomAccessFile file;
-    private long pos = 0;
 
     public FakeUartSource(String filename) throws Exception {
         file = new RandomAccessFile(filename, "r");
     }
 
     /**
-     * Reads up to buffer.length bytes into buffer.
-     * Returns number of bytes read, or 0 if no new data yet.
+     * Reads up to 16 bytes (128 bits) to simulate hardware chunking.
+     * Returns:
+     *  - 16 normally
+     *  - <16 only at EOF
+     *  - -1 at true EOF
      */
     public int read(byte[] buffer) throws Exception {
-        file.seek(pos);
-        int bytesRead = file.read(buffer);
-        if (bytesRead > 0) {
-            pos += bytesRead;
-            return bytesRead;
-        } else {
-            // no new data, sleep briefly to avoid busy loop
-            Thread.sleep(20);
-            return 0;
+        int toRead = Math.min(buffer.length, 16);
+
+        int bytesRead = file.read(buffer, 0, toRead);
+
+        if (bytesRead == -1) {
+            return -1; // EOF
         }
+
+        // simulate UART interrupts
+        Thread.sleep(1);
+
+        return bytesRead;
     }
 
     public void close() throws Exception {

@@ -11,7 +11,7 @@ class Packet {
     //Total packet size: 1 + 2 + 1 + 2 + PAYLOAD_SIZE + 2
     static final byte START = 0x7E;//IDK why this is used
 
-    short seq;//Seq number 0 .... 65536
+    short seq;//Seq number 0 .... 65536 / 2 (no unsigned short)
     byte flags; // 0 = data, 1 = ACK
     short length; // number of VALID bytes in payload
 

@@ -8,16 +8,15 @@ import java.nio.charset.CodingErrorAction;
 
 class FakeUartSink {
 
-    private PrintStream out;
-    private boolean humanReadable;
-    private CharsetDecoder decoder;
+    private final PrintStream out;
+    private final boolean humanReadable = Config.UART_HUMAN_READABLE;
+    private final CharsetDecoder decoder;
 
     public FakeUartSink() throws Exception {
-        this.humanReadable = Config.UART_HUMAN_READABLE;
 
         if (Config.UART_TO_FILE) {
             out = new PrintStream(new FileOutputStream(Config.UART_FILE, true)); // append
-            out.println("\nNEW TRANSMISSION\n");
+            out.println("\n" + "=".repeat(10) + "\nNEW TRANSMISSION\n" + "=".repeat(10));
         } else {
             out = System.err; // separate from stdout logs
         }

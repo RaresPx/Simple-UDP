@@ -9,7 +9,7 @@ Sender with testcases,
         DROP,
         CORRUPT,
         DROP_ACK,
-        OUT_OF_ORDER
+        DUPLICATE
  Testcases repeat every 5 packets.
  Out of order realistically never happens since this is not a sliding window sender,
  but receiver handles it with a buffer.
@@ -40,7 +40,7 @@ public class Sender {
         InetAddress addr = InetAddress.getByName(Config.INET_ADDR);
 
         // 🔹 Replace static message with UART source
-        FakeUartSource uart = new FakeUartSource(Config.UART_INPUT_FILE);
+        BufferedUartSource uart = new BufferedUartSource(Config.UART_INPUT_FILE,Config.BUFFER_SIZE);
 
         byte[] buffer = new byte[PAYLOAD_SIZE];
         int base = 0, nextSeq = 0;
@@ -56,7 +56,7 @@ public class Sender {
             while (nextSeq < base + WINDOW_SIZE) {
                 int read = uart.read(buffer);
                 if (read <= 0) {
-                    if(!END_OF_TRANSMISSION) System.out.println("End of uart reached");
+                    if(!END_OF_TRANSMISSION) System.out.println("End of UART reached");
                     END_OF_TRANSMISSION = true;
                     break;
                 }else{
@@ -126,13 +126,13 @@ public class Sender {
     static TestAction getAction(int seq, int attempt) {
         if (!DEBUG_TESTS) return TestAction.NORMAL;
         if (attempt > 1) return TestAction.NORMAL;
-        switch (seq % 5) {
-            case 0: return TestAction.DROP;
-            case 1: return TestAction.CORRUPT;
-            case 2: return TestAction.DROP_ACK;
-            case 3: return TestAction.DUPLICATE;
-            default: return TestAction.NORMAL;
-        }
+        return switch (seq % 5) {
+            case 0 -> TestAction.DROP;
+            case 1 -> TestAction.CORRUPT;
+            case 2 -> TestAction.DROP_ACK;
+            case 3 -> TestAction.DUPLICATE;
+            default -> TestAction.NORMAL;
+        };
     }
 
     static void sendWithTests(DatagramSocket socket, InetAddress addr,
