@@ -1,5 +1,8 @@
 package com.project.my_udp;
 
+import com.project.my_udp.control_hub.ControlHub;
+import com.project.my_udp.fake_uart.FakeUartSink;
+
 import java.net.*;
 import java.util.*;
 
@@ -17,6 +20,10 @@ Can implement user custom logic in deliver() (e.g. UART, file, etc.)
 public class Receiver {
 
     static final int PORT = Config.PORT;
+    static int MAX_PACKET_SIZE = Config.MAX_PACKET_SIZE;
+    static  int PAYLOAD_SIZE = Config.PAYLOAD_SIZE;
+    static  int TIMEOUT_MS = Config.TIMEOUT_MS;
+    static  int WINDOW_SIZE = Config.WINDOW_SIZE;
 
     public static void main(String[] args) throws Exception {
 
@@ -28,11 +35,20 @@ public class Receiver {
 
         FakeUartSink uart = new FakeUartSink();
 
-        System.out.println("Receiver started...\n");
+        //System.out.println("Receiver started...\n");
 
         while (true) {
-
-            byte[] buf = new byte[Config.MAX_PACKET_SIZE];
+            if(Config.DEBUG_CONTROL) {
+                if(ControlHub.hasUpdated()) {
+                    ControlHub.TransmissionConfig tc = ControlHub.getConfig();
+                    PAYLOAD_SIZE = tc.payloadSize;
+                    TIMEOUT_MS = tc.timeoutMs;
+                    WINDOW_SIZE = tc.windowSize;
+                    MAX_PACKET_SIZE = tc.maxpacketSize;
+                    ControlHub.log("RX", "Modified Transmission Config: ");
+                }
+            }
+            byte[] buf = new byte[MAX_PACKET_SIZE];
             DatagramPacket dp = new DatagramPacket(buf, buf.length);
             socket.receive(dp);
 
@@ -49,6 +65,13 @@ public class Receiver {
 
             log("Received seq=" + seq + " len=" + p.length);
 
+            if(seq == 0 && expectedSeq >= Short.MAX_VALUE - WINDOW_SIZE){
+                received.clear();
+                buffer.clear();
+                expectedSeq = 0;
+                //System.err.println("MAX SEQ REACHED, RESTARTING FROM 0");
+                ControlHub.log("WARNING","MAX SEQ REACHED, RESTARTING FROM 0");
+            }
             if (received.contains(seq)) {
                 log("DUPLICATE seq=" + seq);
             } else {
@@ -80,7 +103,6 @@ public class Receiver {
     static void deliver(int seq, byte[] data, FakeUartSink uart) {
         log("DELIVER seq=" + seq + " bytes=" + data.length);
 
-        // 🔌 forward to UART (16-bit chunk simulation inside)
         uart.write(data, data.length);
     }
 
@@ -98,7 +120,10 @@ public class Receiver {
     }
 
     static void log(String s) {
-        System.out.println("[RECEIVER] " + s);
-        System.out.flush();
+        ControlHub.log("RX",s);
+        if(Config.DEBUG) {
+            System.out.println("[RECEIVER] " + s);
+            System.out.flush();
+        }
     }
 }

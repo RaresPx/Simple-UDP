@@ -1,6 +1,8 @@
-package com.project.my_udp;
+package com.project.my_udp.uart_buffer;
 
-class BufferedUartSource {
+import com.project.my_udp.fake_uart.FakeUartSource;
+
+public class BufferedUartSource {
 
     private final FakeUartSource source;
     private final ByteRingBuffer buffer;
@@ -46,7 +48,8 @@ class BufferedUartSource {
             int read = buffer.take(
                     dest,
                     totalRead,
-                    dest.length - totalRead
+                    dest.length - totalRead,
+                    1_000_000
             );
 
             if (read == 0) {

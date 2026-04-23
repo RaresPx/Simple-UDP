@@ -1,4 +1,6 @@
-package com.project.my_udp;
+package com.project.my_udp.fake_uart;
+
+import com.project.my_udp.Config;
 
 import java.io.FileOutputStream;
 import java.io.PrintStream;
@@ -6,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 
-class FakeUartSink {
+public class FakeUartSink {
 
     private final PrintStream out;
     private final boolean humanReadable = Config.UART_HUMAN_READABLE;
@@ -15,7 +17,7 @@ class FakeUartSink {
     public FakeUartSink() throws Exception {
 
         if (Config.UART_TO_FILE) {
-            out = new PrintStream(new FileOutputStream(Config.UART_FILE, true)); // append
+            out = new PrintStream(new FileOutputStream(Config.UART_FILE, false)); // append
             out.println("\n" + "=".repeat(10) + "\nNEW TRANSMISSION\n" + "=".repeat(10));
         } else {
             out = System.err; // separate from stdout logs

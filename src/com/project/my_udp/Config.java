@@ -48,19 +48,22 @@ public class Config {
     public static final String INET_ADDR = "127.0.0.1";
     public static final int PORT = 5000;
 
-    public static final int BUFFER_SIZE = 16384; //16kB
+    public static final int BUFFER_SIZE = 1024*1024; //1M
+    public static final double WARN_AT_BUFFER_PERCENTAGE = 0.5;
 
-    public static final int PAYLOAD_SIZE = 512;
-    public static final int WINDOW_SIZE = 5;
+    public static int PAYLOAD_SIZE = 1024;
+    public static int WINDOW_SIZE = 10;
 
     public static final int TIMEOUT_MS = 150;
     public static final int SOCKET_TIMEOUT_MS = 50;
 
-    public static final int MAX_PACKET_SIZE = 2048;
+    public static int MAX_PACKET_SIZE = 2048;
 
-    public static final boolean DEBUG = true;
+    public static final boolean DEBUG = false;
     public static final boolean DEBUG_TESTS = false;
-
+    public static final boolean DEBUG_CONTROL = false;
+    public static final int DEBUG_CONTROL_PORT = 8000;
+    public static final int DEBUG_PACKET_SIZE = 512;
     // UART config
     public static final boolean UART_TO_FILE = true;
     public static final String UART_FILE = "uart_output.txt";

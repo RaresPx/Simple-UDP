@@ -1,8 +1,8 @@
-package com.project.my_udp;
+package com.project.my_udp.fake_uart;
 
 import java.io.RandomAccessFile;
 
-class FakeUartSource {
+public class FakeUartSource {
 
     private final RandomAccessFile file;
 
@@ -27,7 +27,7 @@ class FakeUartSource {
         }
 
         // simulate UART interrupts
-        Thread.sleep(1);
+        Thread.sleep(10);
 
         return bytesRead;
     }

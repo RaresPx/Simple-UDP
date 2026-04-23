@@ -1,5 +1,8 @@
 package com.project.my_udp;
 
+import com.project.my_udp.control_hub.ControlHub;
+import com.project.my_udp.uart_buffer.BufferedUartSource;
+
 import java.net.*;
 import java.util.*;
 
@@ -18,10 +21,12 @@ Sender with testcases,
  */
 public class Sender {
 
-    static final int PAYLOAD_SIZE = Config.PAYLOAD_SIZE;
+
     static final int PORT = Config.PORT;
-    static final int TIMEOUT_MS = Config.TIMEOUT_MS;
-    static final int WINDOW_SIZE = Config.WINDOW_SIZE;
+    static  int PAYLOAD_SIZE = Config.PAYLOAD_SIZE;
+    static  int TIMEOUT_MS = Config.TIMEOUT_MS;
+    static  int WINDOW_SIZE = Config.WINDOW_SIZE;
+    static int MAX_PACKET_SIZE = Config.MAX_PACKET_SIZE;
     static final boolean DEBUG_TESTS = Config.DEBUG_TESTS;
     static boolean END_OF_TRANSMISSION = false;
 
@@ -39,7 +44,7 @@ public class Sender {
         socket.setSoTimeout(Config.SOCKET_TIMEOUT_MS);
         InetAddress addr = InetAddress.getByName(Config.INET_ADDR);
 
-        // 🔹 Replace static message with UART source
+        // Replace static message with UART source
         BufferedUartSource uart = new BufferedUartSource(Config.UART_INPUT_FILE,Config.BUFFER_SIZE);
 
         byte[] buffer = new byte[PAYLOAD_SIZE];
@@ -48,15 +53,38 @@ public class Sender {
         Map<Integer, Long> timers = new HashMap<>();
         Map<Integer, Integer> attempts = new HashMap<>();
 
-        System.out.println("Sender started...\n");
+        log("Sender started...\n");
 
         while (true) {
 
+            if(Config.DEBUG_CONTROL) {
+                if(ControlHub.hasUpdated()) {
+                    ControlHub.TransmissionConfig tc = ControlHub.getConfig();
+                    PAYLOAD_SIZE = tc.payloadSize;
+                    TIMEOUT_MS = tc.timeoutMs;
+                    WINDOW_SIZE = tc.windowSize;
+                    MAX_PACKET_SIZE = tc.maxpacketSize;
+                    ControlHub.log("TX", "Modified Transmission Config: ");
+                }
+            }
+
+            if(base + WINDOW_SIZE > Short.MAX_VALUE){
+                nextSeq = 0;
+                base=0;
+                window.clear();
+                timers.clear();
+                attempts.clear();
+                //System.err.println("MAX SEQ REACHED, RESTARTING FROM 0" );
+                ControlHub.log("WARNING", "MAX SEQ REACHED, RESTARTING FROM 0" );
+            }
             // Fill window
             while (nextSeq < base + WINDOW_SIZE) {
                 int read = uart.read(buffer);
                 if (read <= 0) {
-                    if(!END_OF_TRANSMISSION) System.out.println("End of UART reached");
+                    if(!END_OF_TRANSMISSION) {
+                        log("End of UART reached");
+                        ControlHub.log("SYS","End of UART reached");
+                    }
                     END_OF_TRANSMISSION = true;
                     break;
                 }else{
@@ -161,13 +189,14 @@ public class Sender {
     }
 
     static Packet receive(DatagramSocket socket) throws Exception {
-        byte[] buf = new byte[Config.MAX_PACKET_SIZE];
+        byte[] buf = new byte[MAX_PACKET_SIZE];
         DatagramPacket dp = new DatagramPacket(buf, buf.length);
         socket.receive(dp);
         return Packet.fromBytes(Arrays.copyOf(dp.getData(), dp.getLength()));
     }
 
     static void log(String s) {
+        ControlHub.log("TX",s);
         if (Config.DEBUG && !END_OF_TRANSMISSION) System.out.println("[SENDER] " + s);
     }
 }
