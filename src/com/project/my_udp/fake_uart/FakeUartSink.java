@@ -4,38 +4,28 @@ import com.project.my_udp.Config;
 
 import java.io.FileOutputStream;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
 
 public class FakeUartSink {
 
     private final PrintStream out;
     private final boolean humanReadable = Config.UART_HUMAN_READABLE;
-    private final CharsetDecoder decoder;
 
     public FakeUartSink() throws Exception {
 
         if (Config.UART_TO_FILE) {
             out = new PrintStream(new FileOutputStream(Config.UART_FILE, false)); // append
-            out.println("\n" + "=".repeat(10) + "\nNEW TRANSMISSION\n" + "=".repeat(10));
+            //out.println("\n" + "=".repeat(10) + "\nNEW TRANSMISSION\n" + "=".repeat(10));
         } else {
             out = System.err; // separate from stdout logs
         }
-
-        // UTF-8 decoder that replaces malformed bytes with �
-        decoder = StandardCharsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPLACE)
-                .onUnmappableCharacter(CodingErrorAction.REPLACE);
     }
 
     public void write(byte[] data, int len) {
 
         if (humanReadable) {
             try {
-                // decode only the first 'len' bytes
-                String text = decoder.decode(java.nio.ByteBuffer.wrap(data, 0, len)).toString();
-                out.print(text);
+                //write bytes
+                out.write(data,0,len);
             } catch (Exception e) {
                 out.println("[Invalid UTF-8 bytes]");
             }

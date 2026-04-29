@@ -21,6 +21,9 @@ public class ControlPanel {
     private static final String ESP_IP = "127.0.0.1";
     private static final int ESP_PORT = 8000;
 
+    private final java.util.concurrent.BlockingQueue<String> uiQueue =
+            new java.util.concurrent.LinkedBlockingQueue<>(5000);
+
     // =========================
     // NETWORK
     // =========================
@@ -91,6 +94,7 @@ public class ControlPanel {
         buildUI();
         startListenerThread();
         startLoginWatcher();
+        startUiDrainThread();
     }
 
     // =========================
@@ -287,7 +291,7 @@ public class ControlPanel {
 
                     String msg = new String(packet.getData(), 0, packet.getLength());
 
-                    SwingUtilities.invokeLater(() -> handle(msg));
+                    uiQueue.offer(msg);
 
                 } catch (Exception ignored) {}
             }
@@ -399,6 +403,24 @@ public class ControlPanel {
 
         t.setDaemon(true);
         t.start();
+    }
+
+    private void startUiDrainThread() {
+
+        Timer timer = new Timer(20, e -> {
+
+            int batch = 0;
+
+            while (batch < 200) { // prevent UI starvation
+                String msg = uiQueue.poll();
+                if (msg == null) break;
+
+                handle(msg);
+                batch++;
+            }
+        });
+
+        timer.start();
     }
 
     // =========================

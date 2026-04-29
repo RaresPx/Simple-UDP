@@ -27,7 +27,7 @@ public class FakeUartSource {
         }
 
         // simulate UART interrupts
-        Thread.sleep(10);
+        //Thread.sleep(1,0);
 
         return bytesRead;
     }

@@ -7,27 +7,29 @@ class ByteRingBuffer {
 
     private final byte[] buffer;
     private int head = 0, tail = 0;
-    public int size = 0; //access in buffer source
+    public int size = 0;
     private final int capacity;
 
     public ByteRingBuffer(int capacity) {
         this.buffer = new byte[capacity];
         this.capacity = capacity;
+
+        ControlHub.log("RINGBUF", "EVENT=INIT cap=" + capacity);
     }
 
     public synchronized void put(byte[] src, int length) throws InterruptedException {
+
         int offset = 0;
 
-        if(size > (int) (capacity * Config.WARN_AT_BUFFER_PERCENTAGE)) {
-           // System.err.println("Buffer is " + Config.WARN_AT_BUFFER_PERCENTAGE * 100 + "% Full! " + this.size + " b");
-            ControlHub.log("WARNING", "Buffer is " + Config.WARN_AT_BUFFER_PERCENTAGE * 100 + "% Full! " + this.size + " b");
+        if (size > (int) (capacity * Config.WARN_AT_BUFFER_PERCENTAGE)) {
+            ControlHub.log("RINGBUF", "EVENT=WARN_FULLNESS size=" + size);
         }
 
         while (offset < length) {
+
             while (size == capacity) {
-                //System.err.println("Buffer full!");
-                ControlHub.log("WARNING","Buffer full");
-                wait(); // buffer full
+                ControlHub.log("RINGBUF", "EVENT=FULL_BLOCK");
+                wait();
             }
 
             int space = capacity - size;
@@ -41,6 +43,12 @@ class ByteRingBuffer {
             size += chunk;
             offset += chunk;
 
+            ControlHub.log("RINGBUF",
+                    "EVENT=PUT chunk=" + chunk +
+                            " size=" + size +
+                            " head=" + head +
+                            " tail=" + tail);
+
             notifyAll();
         }
     }
@@ -53,13 +61,11 @@ class ByteRingBuffer {
         while (size < length) {
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0) {
-                break; // timeout reached
+                ControlHub.log("RINGBUF", "EVENT=TAKE_TIMEOUT requested=" + length + " available=" + size);
+                break;
             }
 
-            long millis = remaining / 1_000_000;
-            int nanos = (int)(remaining % 1_000_000);
-
-            wait(millis, nanos);
+            wait(remaining / 1_000_000, (int)(remaining % 1_000_000));
         }
 
         int count = Math.min(length, size);
@@ -71,8 +77,13 @@ class ByteRingBuffer {
 
         size -= count;
 
+        ControlHub.log("RINGBUF",
+                "EVENT=TAKE count=" + count +
+                        " size=" + size +
+                        " head=" + head +
+                        " tail=" + tail);
+
         notifyAll();
         return count;
     }
-
 }

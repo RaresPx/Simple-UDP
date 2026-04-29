@@ -21,7 +21,6 @@ Sender with testcases,
  */
 public class Sender {
 
-
     static final int PORT = Config.PORT;
     static  int PAYLOAD_SIZE = Config.PAYLOAD_SIZE;
     static  int TIMEOUT_MS = Config.TIMEOUT_MS;
@@ -29,6 +28,7 @@ public class Sender {
     static int MAX_PACKET_SIZE = Config.MAX_PACKET_SIZE;
     static final boolean DEBUG_TESTS = Config.DEBUG_TESTS;
     static boolean END_OF_TRANSMISSION = false;
+    static int SEQ_MOD = Short.MAX_VALUE + 1;
 
     enum TestAction {
         NORMAL,
@@ -44,7 +44,6 @@ public class Sender {
         socket.setSoTimeout(Config.SOCKET_TIMEOUT_MS);
         InetAddress addr = InetAddress.getByName(Config.INET_ADDR);
 
-        // Replace static message with UART source
         BufferedUartSource uart = new BufferedUartSource(Config.UART_INPUT_FILE,Config.BUFFER_SIZE);
 
         byte[] buffer = new byte[PAYLOAD_SIZE];
@@ -53,9 +52,13 @@ public class Sender {
         Map<Integer, Long> timers = new HashMap<>();
         Map<Integer, Integer> attempts = new HashMap<>();
 
-        log("Sender started...\n");
+        log("EVENT=START msg=Sender started");
+
+        long startTime = System.currentTimeMillis();
 
         while (true) {
+
+            long loopTime = System.currentTimeMillis();
 
             if(Config.DEBUG_CONTROL) {
                 if(ControlHub.hasUpdated()) {
@@ -64,32 +67,44 @@ public class Sender {
                     TIMEOUT_MS = tc.timeoutMs;
                     WINDOW_SIZE = tc.windowSize;
                     MAX_PACKET_SIZE = tc.maxpacketSize;
-                    ControlHub.log("TX", "Modified Transmission Config: ");
+
+                    ControlHub.log("TX", "EVENT=CONFIG_UPDATE");
+                    log("EVENT=CONFIG_UPDATE payload=" + PAYLOAD_SIZE +
+                            " timeout=" + TIMEOUT_MS +
+                            " window=" + WINDOW_SIZE);
                 }
             }
 
-            if(base + WINDOW_SIZE > Short.MAX_VALUE){
-                nextSeq = 0;
-                base=0;
-                window.clear();
-                timers.clear();
-                attempts.clear();
-                //System.err.println("MAX SEQ REACHED, RESTARTING FROM 0" );
-                ControlHub.log("WARNING", "MAX SEQ REACHED, RESTARTING FROM 0" );
+            //Remove old packets
+            {
+                int old = (base + SEQ_MOD/2) % SEQ_MOD;
+                window.remove(old);
+                timers.remove(old);
+                attempts.remove(old);
+                log("EVENT=WINDOW_CLEAN base=" + base + " removed=" + old);
             }
+
             // Fill window
-            while (nextSeq < base + WINDOW_SIZE) {
+            while ((int)((nextSeq - base + SEQ_MOD) % SEQ_MOD) < WINDOW_SIZE) {
+
                 int read = uart.read(buffer);
+
                 if (read <= 0) {
                     if(!END_OF_TRANSMISSION) {
-                        log("End of UART reached");
+                        log("EVENT=EOF msg=End of UART reached");
                         ControlHub.log("SYS","End of UART reached");
                     }
                     END_OF_TRANSMISSION = true;
                     break;
-                }else{
+                } else {
                     END_OF_TRANSMISSION = false;
                 }
+
+                log("EVENT=NEW_PACKET seq=" + nextSeq +
+                        " len=" + read +
+                        " base=" + base +
+                        " next=" + nextSeq +
+                        " loopTime=" + (System.currentTimeMillis() - loopTime));
 
                 Packet p = new Packet();
                 p.seq = (short) nextSeq;
@@ -98,54 +113,81 @@ public class Sender {
                 System.arraycopy(buffer, 0, p.payload, 0, read);
 
                 attempts.put(nextSeq, 1);
+
                 sendWithTests(socket, addr, p, nextSeq, 1);
 
                 window.put(nextSeq, p);
                 timers.put(nextSeq, System.currentTimeMillis());
 
-                nextSeq++;
+                log("EVENT=BUFFER_ADD seq=" + nextSeq + " windowSize=" + window.size());
+
+                nextSeq = (nextSeq+1)%SEQ_MOD;
             }
 
             // Receive ACKs
             try {
                 Packet ack = receive(socket);
+
                 if (ack != null && ack.flags == 1) {
+
                     int ackSeq = ack.seq;
                     int attempt = attempts.getOrDefault(ackSeq, 1);
                     TestAction action = getAction(ackSeq, attempt);
 
+                    log("EVENT=ACK_RECEIVED seq=" + ackSeq +
+                            " base=" + base +
+                            " windowSize=" + window.size());
+
+                    if(DEBUG_TESTS)
+                        log("EVENT=TEST_ACTION seq=" + ackSeq + " type=" + action + " attempt=" + attempt);
+
                     if (action != TestAction.DROP_ACK) {
-                        log("ACK OK seq=" + ackSeq);
+
                         window.remove(ackSeq);
                         timers.remove(ackSeq);
                         attempts.remove(ackSeq);
 
+                        log("EVENT=ACK_ACCEPTED seq=" + ackSeq);
+
                         if (ackSeq == base) {
-                            while (!window.containsKey(base) && base < nextSeq) base++;
+                            while (!window.containsKey(base) && base != nextSeq) {
+                                base = (base+1)%SEQ_MOD;
+                            }
+                            log("EVENT=WINDOW_SLIDE new_base=" + base);
                         }
+
                     } else {
-                        log("IGNORING ACK seq=" + ackSeq);
-                        attempts.put(ackSeq, attempt + 1); // increment so next time it passes
+                        log("EVENT=ACK_IGNORED seq=" + ackSeq);
+                        attempts.put(ackSeq, attempt + 1);
                     }
                 }
+
             } catch (SocketTimeoutException e) {
-                log("ACK TIMEOUT (no packet received)");
+                log("EVENT=ACK_TIMEOUT msg=no packet received");
             } catch (SocketException e) {
-                log("SOCKET EXCEPTION: " + e.getMessage());
+                log("EVENT=SOCKET_ERROR msg=" + e.getMessage());
             } catch (Exception e) {
-                log("RECEIVE ERROR: " + e.getMessage());
+                log("EVENT=RECEIVE_ERROR msg=" + e.getMessage());
             }
 
             // Check retransmit
             long now = System.currentTimeMillis();
+
             for (int seq : new ArrayList<>(window.keySet())) {
                 if (now - timers.get(seq) > TIMEOUT_MS) {
-                    log("TIMEOUT seq=" + seq);
+
+                    log("EVENT=TIMEOUT seq=" + seq +
+                            " age=" + (now - timers.get(seq)));
+
                     Packet p = window.get(seq);
                     int attempt = attempts.getOrDefault(seq, 1);
+
                     sendWithTests(socket, addr, p, seq, attempt + 1);
+
                     timers.put(seq, now);
                     attempts.put(seq, attempt + 1);
+
+                    log("EVENT=RETRANSMIT seq=" + seq + " attempt=" + (attempt + 1));
                 }
             }
         }
@@ -165,26 +207,32 @@ public class Sender {
 
     static void sendWithTests(DatagramSocket socket, InetAddress addr,
                               Packet p, int seq, int attempt) throws Exception {
+
         TestAction action = getAction(seq, attempt);
         byte[] bytes = p.toBytes();
 
+        log("EVENT=SEND_PREP seq=" + seq + " action=" + action + " attempt=" + attempt);
+
         if (action == TestAction.CORRUPT) {
             bytes[5] ^= 0xFF;
-            log("CORRUPTING packet seq=" + seq);
+            log("EVENT=CORRUPT seq=" + seq);
         }
 
         if (action == TestAction.DROP) {
-            log("DROPPING packet seq=" + seq);
+            log("EVENT=DROP seq=" + seq);
             return;
         }
 
         DatagramPacket dp = new DatagramPacket(bytes, bytes.length, addr, PORT);
         socket.send(dp);
-        log("SEND seq=" + seq + " len=" + p.length);
+
+        log("EVENT=SEND seq=" + seq +
+                " len=" + p.length +
+                " attempt=" + attempt);
 
         if (action == TestAction.DUPLICATE) {
             socket.send(dp);
-            log("DUPLICATE SEND seq=" + seq);
+            log("EVENT=DUPLICATE_SEND seq=" + seq);
         }
     }
 
@@ -196,7 +244,8 @@ public class Sender {
     }
 
     static void log(String s) {
-        ControlHub.log("TX",s);
-        if (Config.DEBUG && !END_OF_TRANSMISSION) System.out.println("[SENDER] " + s);
+        ControlHub.log("TX", s);
+        if (Config.DEBUG && !END_OF_TRANSMISSION)
+            System.out.println("[SENDER] " + s);
     }
 }

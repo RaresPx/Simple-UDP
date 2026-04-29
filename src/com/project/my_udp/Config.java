@@ -59,9 +59,9 @@ public class Config {
 
     public static int MAX_PACKET_SIZE = 2048;
 
-    public static final boolean DEBUG = false;
+    public static final boolean DEBUG = true;
     public static final boolean DEBUG_TESTS = false;
-    public static final boolean DEBUG_CONTROL = false;
+    public static final boolean DEBUG_CONTROL = true;
     public static final int DEBUG_CONTROL_PORT = 8000;
     public static final int DEBUG_PACKET_SIZE = 512;
     // UART config
