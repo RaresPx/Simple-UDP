@@ -6,6 +6,15 @@ import com.project.my_udp.fake_uart.FakeUartSink;
 import java.net.*;
 import java.util.*;
 
+/*
+Simple receiver, handles all sender test cases
+Has block buffer so it can handle sliding window sender
+Now:
+- works on raw bytes (no String corruption)
+- forwards data directly to UART
+- no END_OF_MESSAGE needed
+Can implement user custom logic in deliver() (e.g. UART, file, etc.)
+*/
 public class Receiver {
 
     static final int PORT = Config.PORT;
